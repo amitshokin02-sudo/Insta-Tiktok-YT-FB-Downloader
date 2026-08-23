@@ -16,11 +16,11 @@ from yt_dlp import YoutubeDL
 # =========================================================
 
 # Render Environment Variable:
-# BOT_TOKEN = your Telegram bot token
+# BOT_TOKEN = 8925499985:AAHzGIwKCG_JviunyfMuIn0KT1Bll_PraF8
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 if not BOT_TOKEN:
-    raise RuntimeError("8925499985:AAHzGIwKCG_JviunyfMuIn0KT1Bll_PraF8")
+    raise RuntimeError("BOT_TOKEN environment variable is missing.")
 
 BOT_USERNAME = "@Insta_Tiktok_YT_FB_Downloader"
 
