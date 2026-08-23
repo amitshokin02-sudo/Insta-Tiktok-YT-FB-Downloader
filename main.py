@@ -1,34 +1,30 @@
 import os
+import re
+import uuid
 import base64
 import threading
 import logging
-import uuid
-from urllib.parse import urlparse
 
-from flask import Flask
 import telebot
 from telebot import types
-import yt_dlp
+from flask import Flask
+from yt_dlp import YoutubeDL
 
 
-# ============================================================
-# CONFIG
-# ============================================================
+# =========================================================
+# CONFIGURATION
+# =========================================================
 
-BOT_TOKEN = os.getenv("8925499985:AAHzGIwKCG_JviunyfMuIn0KT1Bll_PraF8")
+# Render Environment Variable:
+# BOT_TOKEN = your Telegram bot token
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 if not BOT_TOKEN:
-    raise RuntimeError("BOT_TOKEN environment variable is missing.")
+    raise RuntimeError("8925499985:AAHzGIwKCG_JviunyfMuIn0KT1Bll_PraF8")
 
-PORT = int(os.getenv("PORT", "10000"))
+BOT_USERNAME = "@Insta_Tiktok_YT_FB_Downloader"
 
-CHANNEL_USERNAME = "@BLACK_KNOWLEDGE_190"
-
-# ============================================================
-# SECURED LINKS
-# Required Base64 strings
-# ============================================================
-
+# Base64 encoded links - kept exactly as requested
 YOUTUBE_B64 = (
     "aHR0cHM6Ly95b3V0dWJlLmNvbS9AYmxhY2trbm93bGVkZ2VfMTkwP3NpPTlFd2tNUEdiLWxIUnpaZHE="
 )
@@ -40,63 +36,50 @@ SUPPORT_B64 = (
 YOUTUBE_LINK = base64.b64decode(YOUTUBE_B64).decode("utf-8")
 SUPPORT_LINK = base64.b64decode(SUPPORT_B64).decode("utf-8")
 
-
-# ============================================================
-# LOGGING
-# ============================================================
+DOWNLOAD_DIR = "downloads"
+os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(message)s"
+    format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-logger = logging.getLogger(__name__)
+bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 
 
-# ============================================================
-# TELEGRAM BOT
-# ============================================================
-
-bot = telebot.TeleBot(
-    BOT_TOKEN,
-    parse_mode="HTML"
-)
-
-
-# ============================================================
+# =========================================================
 # FLASK KEEP-ALIVE SERVER
-# ============================================================
+# =========================================================
 
 app = Flask(__name__)
 
 
 @app.route("/")
 def home():
-    return "BLACK KNOWLEDGE BOT is running.", 200
+    return "Telegram Downloader Bot is running!"
 
 
 @app.route("/health")
 def health():
-    return "OK", 200
+    return "OK"
 
 
 def keep_alive():
-    """
-    Runs Flask in a separate thread so Telegram polling
-    and the web server can run simultaneously.
-    """
     app.run(
         host="0.0.0.0",
-        port=PORT,
-        threaded=True
+        port=10000,
+        debug=False,
+        use_reloader=False
     )
 
 
-# ============================================================
-# START MENU
-# ============================================================
+# =========================================================
+# START COMMAND
+# =========================================================
 
-def start_keyboard():
+@bot.message_handler(commands=["start"])
+def start_command(message):
+
     keyboard = types.InlineKeyboardMarkup(row_width=1)
 
     subscribe_btn = types.InlineKeyboardButton(
@@ -105,8 +88,8 @@ def start_keyboard():
     )
 
     tutorials_btn = types.InlineKeyboardButton(
-        "🎓 ALL TUTORIALS",
-        url=YOUTUBE_LINK
+        "📚 ALL TUTORIALS",
+        url=SUPPORT_LINK
     )
 
     contact_btn = types.InlineKeyboardButton(
@@ -120,322 +103,367 @@ def start_keyboard():
         contact_btn
     )
 
-    return keyboard
-
-
-@bot.message_handler(commands=["start"])
-def start_command(message):
     welcome_text = f"""
-<b>👑 BLACK KNOWLEDGE 190</b>
+<b>🔥 Welcome to {BOT_USERNAME}</b>
 
-━━━━━━━━━━━━━━━━━━━━
-🔥 <b>PREMIUM VIDEO DOWNLOADER</b>
-━━━━━━━━━━━━━━━━━━━━
+🚀 <b>Premium Video Downloader</b>
 
-Welcome to <b>{CHANNEL_USERNAME}</b> 🚀
+Download videos easily from:
 
-Send me an Instagram Reel or Facebook video link and I'll
-download it for you in high quality.
-
-<b>Supported Platforms:</b>
 • Instagram Reels
 • Facebook Videos
+• YouTube Videos
 
-⚡ Fast Processing
-🎬 High Quality
-🧹 Automatic File Cleanup
+<b>⚡ Fast • Simple • High Quality</b>
 
-━━━━━━━━━━━━━━━━━━━━
-<b>Send your video link below 👇</b>
-━━━━━━━━━━━━━━━━━━━━
+👇 Choose an option below or simply send me a video link.
 """
 
     bot.send_message(
         message.chat.id,
         welcome_text,
-        reply_markup=start_keyboard()
+        reply_markup=keyboard
     )
 
 
-# ============================================================
+# =========================================================
+# HELP COMMAND
+# =========================================================
+
+@bot.message_handler(commands=["help"])
+def help_command(message):
+
+    bot.send_message(
+        message.chat.id,
+        f"""
+<b>📥 How to Download</b>
+
+1️⃣ Copy an Instagram, Facebook or YouTube video link.
+
+2️⃣ Send the link here.
+
+3️⃣ Wait while I download your video.
+
+4️⃣ Your video will be uploaded automatically.
+
+<b>Supported:</b>
+• Instagram
+• Facebook
+• YouTube
+
+<b>Bot:</b> {BOT_USERNAME}
+"""
+    )
+
+
+# =========================================================
 # URL VALIDATION
-# ============================================================
+# =========================================================
 
 def is_supported_url(url):
-    """
-    Allows only Instagram and Facebook URLs.
-    This prevents the bot from becoming a generic arbitrary
-    URL downloader.
-    """
 
-    try:
-        parsed = urlparse(url)
+    supported_domains = [
+        "youtube.com",
+        "youtu.be",
+        "instagram.com",
+        "facebook.com",
+        "fb.watch",
+        "m.facebook.com",
+        "www.facebook.com",
+        "www.instagram.com"
+    ]
 
-        if parsed.scheme not in ("http", "https"):
-            return False
+    url_lower = url.lower()
 
-        hostname = (parsed.hostname or "").lower()
-
-        supported_domains = (
-            "instagram.com",
-            "www.instagram.com",
-            "facebook.com",
-            "www.facebook.com",
-            "fb.watch",
-            "m.facebook.com",
-            "web.facebook.com"
-        )
-
-        return hostname in supported_domains or any(
-            hostname.endswith("." + domain)
-            for domain in (
-                "instagram.com",
-                "facebook.com"
-            )
-        )
-
-    except Exception:
-        return False
+    return any(
+        domain in url_lower
+        for domain in supported_domains
+    )
 
 
-# ============================================================
-# FILE DOWNLOAD
-# ============================================================
+# =========================================================
+# EXTRACT URL FROM MESSAGE
+# =========================================================
+
+def extract_url(text):
+
+    url_pattern = r"https?://[^\s]+"
+
+    match = re.search(url_pattern, text)
+
+    if match:
+        return match.group(0).rstrip(".,!?)]}")
+
+    return None
+
+
+# =========================================================
+# DOWNLOAD VIDEO
+# =========================================================
 
 def download_video(url):
-    """
-    Downloads a video using yt-dlp.
 
-    Returns:
-        filepath, title
-    """
-
-    download_dir = "downloads"
-    os.makedirs(download_dir, exist_ok=True)
-
-    unique_id = uuid.uuid4().hex
+    file_id = uuid.uuid4().hex
 
     output_template = os.path.join(
-        download_dir,
-        f"{unique_id}.%(ext)s"
+        DOWNLOAD_DIR,
+        f"{file_id}.%(ext)s"
     )
 
     ydl_opts = {
         "outtmpl": output_template,
 
-        # Best video + audio where available.
-        "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+        # Try MP4-compatible format first.
+        "format": (
+            "bestvideo[ext=mp4]+bestaudio[ext=m4a]/"
+            "best[ext=mp4]/best"
+        ),
 
         "merge_output_format": "mp4",
 
         "noplaylist": True,
 
-        # Better compatibility with social media.
         "quiet": True,
         "no_warnings": True,
 
-        # Avoid huge unnecessary files when possible.
         "restrictfilenames": True,
 
-        # Don't leave partial files.
-        "overwrites": True,
+        # Useful for sites that require browser-like headers.
+        "http_headers": {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 "
+                "(KHTML, like Gecko) "
+                "Chrome/151.0.0.0 Safari/537.36"
+            )
+        }
     }
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-
-        title = info.get("title") or "Downloaded Video"
-
-        filepath = ydl.prepare_filename(info)
-
-        # yt-dlp can change the final extension after merging.
-        if not os.path.exists(filepath):
-            base = os.path.splitext(filepath)[0]
-
-            possible_files = [
-                base + ".mp4",
-                base + ".mkv",
-                base + ".webm",
-                base + ".mov"
-            ]
-
-            for file in possible_files:
-                if os.path.exists(file):
-                    filepath = file
-                    break
-
-        if not os.path.exists(filepath):
-            raise FileNotFoundError(
-                "Downloaded video file could not be located."
-            )
-
-    return filepath, title
-
-
-# ============================================================
-# MESSAGE HELPERS
-# ============================================================
-
-def edit_status(chat_id, message_id, text):
-    try:
-        bot.edit_message_text(
-            text,
-            chat_id=chat_id,
-            message_id=message_id,
-            parse_mode="HTML"
+    with YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(
+            url,
+            download=True
         )
-    except Exception as e:
-        logger.warning("Could not edit status message: %s", e)
+
+        downloaded_file = ydl.prepare_filename(info)
+
+        # yt-dlp may merge the file into mp4.
+        if not os.path.exists(downloaded_file):
+            possible_mp4 = os.path.splitext(
+                downloaded_file
+            )[0] + ".mp4"
+
+            if os.path.exists(possible_mp4):
+                downloaded_file = possible_mp4
+
+    if not os.path.exists(downloaded_file):
+        raise FileNotFoundError(
+            "Downloaded file could not be found."
+        )
+
+    return downloaded_file
 
 
-# ============================================================
-# VIDEO HANDLER
-# ============================================================
+# =========================================================
+# VIDEO LINK HANDLER
+# =========================================================
 
-@bot.message_handler(func=lambda message: True, content_types=["text"])
+@bot.message_handler(
+    func=lambda message: (
+        message.text is not None
+        and not message.text.startswith("/")
+    )
+)
 def handle_video_link(message):
 
-    url = message.text.strip()
+    url = extract_url(message.text)
+
+    if not url:
+        bot.reply_to(
+            message,
+            "❌ Please send a valid video URL."
+        )
+        return
 
     if not is_supported_url(url):
         bot.reply_to(
             message,
             """
-❌ <b>Invalid Link</b>
+❌ <b>Unsupported Link</b>
 
-Please send a valid:
-• Instagram Reel link
-• Facebook Video link
-            """
+Currently supported platforms:
+
+• Instagram
+• Facebook
+• YouTube
+"""
         )
         return
 
-    # Initial response.
+    # Same message will be edited during the process.
     status_message = bot.reply_to(
         message,
-        "🔍 <b>Analyzing...</b>"
+        "🔎 <b>Analyzing...</b>"
     )
 
-    filepath = None
+    threading.Thread(
+        target=process_download,
+        args=(message, status_message, url),
+        daemon=True
+    ).start()
+
+
+# =========================================================
+# DOWNLOAD PROCESS
+# =========================================================
+
+def process_download(message, status_message, url):
+
+    file_path = None
 
     try:
 
-        # ----------------------------------------------------
+        # -------------------------------------------------
         # ANALYZING
-        # ----------------------------------------------------
+        # -------------------------------------------------
 
-        edit_status(
-            message.chat.id,
-            status_message.message_id,
-            "🔍 <b>Analyzing...</b>\n\nChecking video information..."
-        )
+        try:
+            bot.edit_message_text(
+                "🔎 <b>Analyzing...</b>",
+                chat_id=status_message.chat.id,
+                message_id=status_message.message_id
+            )
+        except Exception:
+            pass
 
-        # ----------------------------------------------------
+        # -------------------------------------------------
         # DOWNLOADING
-        # ----------------------------------------------------
+        # -------------------------------------------------
 
-        edit_status(
-            message.chat.id,
-            status_message.message_id,
-            "⬇️ <b>Downloading (50%)...</b>\n\nPlease wait..."
-        )
+        try:
+            bot.edit_message_text(
+                "⬇️ <b>Downloading (50%)...</b>",
+                chat_id=status_message.chat.id,
+                message_id=status_message.message_id
+            )
+        except Exception:
+            pass
 
-        filepath, title = download_video(url)
+        file_path = download_video(url)
 
-        # ----------------------------------------------------
+        # -------------------------------------------------
         # UPLOADING
-        # ----------------------------------------------------
+        # -------------------------------------------------
 
-        edit_status(
-            message.chat.id,
-            status_message.message_id,
-            "⬆️ <b>Uploading (100%)...</b>\n\nAlmost done..."
-        )
+        try:
+            bot.edit_message_text(
+                "⬆️ <b>Uploading (100%)...</b>",
+                chat_id=status_message.chat.id,
+                message_id=status_message.message_id
+            )
+        except Exception:
+            pass
 
         caption = (
             "Downloaded Successfully! "
-            "Power by: @BLACK_KNOWLEDGE_190"
+            "Power by: @Insta_Tiktok_YT_FB_Downloader bot"
         )
 
-        # Send video.
-        with open(filepath, "rb") as video_file:
+        # -------------------------------------------------
+        # SEND VIDEO
+        # -------------------------------------------------
+
+        with open(file_path, "rb") as video:
+
             bot.send_video(
-                message.chat.id,
-                video_file,
+                chat_id=message.chat.id,
+                video=video,
                 caption=caption,
                 supports_streaming=True
             )
 
-        # ----------------------------------------------------
-        # DELETE IMMEDIATELY AFTER SEND
-        # ----------------------------------------------------
+        # -------------------------------------------------
+        # DELETE FILE IMMEDIATELY AFTER SENDING
+        # -------------------------------------------------
 
-        if filepath and os.path.exists(filepath):
-            os.remove(filepath)
-            filepath = None
+        if file_path and os.path.exists(file_path):
+            os.remove(file_path)
+            file_path = None
 
-        # Remove progress message after successful upload.
+        # Delete progress message after successful upload.
         try:
             bot.delete_message(
-                message.chat.id,
+                status_message.chat.id,
                 status_message.message_id
             )
         except Exception:
             pass
 
-    except Exception as e:
+    except Exception as error:
 
-        logger.exception("Download error")
-
-        # Cleanup even if download/upload fails.
-        if filepath and os.path.exists(filepath):
-            try:
-                os.remove(filepath)
-            except Exception as cleanup_error:
-                logger.error(
-                    "Cleanup failed: %s",
-                    cleanup_error
-                )
-
-        error_message = """
-❌ <b>Download Failed</b>
-
-Possible reasons:
-• The video is private
-• The link has expired
-• Instagram/Facebook blocked the request
-• The video requires login
-• yt-dlp could not extract the video
-
-Please try another public video link.
-"""
-
-        edit_status(
-            message.chat.id,
-            status_message.message_id,
-            error_message
+        logging.exception(
+            "Download error: %s",
+            error
         )
 
+        # Cleanup if something failed.
+        if file_path and os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except Exception:
+                pass
 
-# ============================================================
+        try:
+            bot.edit_message_text(
+                """
+❌ <b>Download Failed</b>
+
+Something went wrong while processing this video.
+
+Please check that:
+• The link is public
+• The video still exists
+• The URL is correct
+
+Then try again.
+""",
+                chat_id=status_message.chat.id,
+                message_id=status_message.message_id
+            )
+        except Exception:
+            pass
+
+
+# =========================================================
 # ERROR HANDLER
-# ============================================================
+# =========================================================
 
 @bot.message_handler(
-    func=lambda message: False
+    content_types=[
+        "photo",
+        "audio",
+        "document",
+        "voice",
+        "sticker",
+        "location",
+        "contact"
+    ]
 )
-def unused_handler(message):
-    pass
+def unsupported_message(message):
+
+    bot.reply_to(
+        message,
+        "📥 Please send an Instagram, Facebook or YouTube video link."
+    )
 
 
-# ============================================================
+# =========================================================
 # MAIN
-# ============================================================
+# =========================================================
 
 if __name__ == "__main__":
 
-    logger.info("Starting Flask keep-alive server...")
-
+    # Start Flask in background.
     flask_thread = threading.Thread(
         target=keep_alive,
         daemon=True
@@ -443,19 +471,17 @@ if __name__ == "__main__":
 
     flask_thread.start()
 
-    logger.info("BLACK KNOWLEDGE 190 Telegram Bot started.")
+    logging.info(
+        "Keep-alive Flask server started on port 10000."
+    )
 
-    # Prevent polling from stopping because of temporary
-    # Telegram/network errors.
-    while True:
-        try:
-            bot.infinity_polling(
-                skip_pending=True,
-                timeout=30,
-                long_polling_timeout=30
-            )
+    logging.info(
+        "Telegram bot started."
+    )
 
-        except Exception as e:
-            logger.exception(
-                "Telegram polling crashed. Restarting..."
-            )
+    # Long polling
+    bot.infinity_polling(
+        skip_pending=True,
+        timeout=60,
+        long_polling_timeout=60
+    )
