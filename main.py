@@ -15,7 +15,7 @@ import yt_dlp
 # CONFIG
 # ============================================================
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+BOT_TOKEN = os.getenv("8925499985:AAHzGIwKCG_JviunyfMuIn0KT1Bll_PraF8")
 
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN environment variable is missing.")
